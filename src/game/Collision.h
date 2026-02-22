@@ -8,7 +8,7 @@ namespace Collision {
 // If they do, returns true and sets 'point' to the intersection point.
 bool SegmentSegment(Vec2 a1, Vec2 a2, Vec2 b1, Vec2 b2, Vec2& point);
 
-// Test if a point is inside a convex polygon (vertices in order).
+// Test if a point is inside a polygon (convex or concave, vertices in order).
 bool PointInPolygon(Vec2 point, const std::vector<Vec2>& polygon);
 
 // Test if a moving point (from prev to curr) hits any edge of a convex polygon.

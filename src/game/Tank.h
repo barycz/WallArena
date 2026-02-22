@@ -61,6 +61,7 @@ public:
 	static constexpr float TURN_SPEED = 4.0f;       // radians/sec
 	static constexpr float BODY_HALF_W = 15.0f;
 	static constexpr float BODY_HALF_H = 20.0f;
+	static constexpr float COLLISION_RADIUS = 18.0f;
 	static constexpr float CANNON_LENGTH = 25.0f;
 	static constexpr float FIRE_COOLDOWN = 0.35f;
 	static constexpr int   MAX_HEALTH = 3;

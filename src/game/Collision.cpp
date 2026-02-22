@@ -26,17 +26,17 @@ bool PointInPolygon(Vec2 point, const std::vector<Vec2>& polygon) {
 	int n = static_cast<int>(polygon.size());
 	if (n < 3) return false;
 
-	// Uses cross product sign consistency (works for convex polygons)
-	bool allPositive = true;
-	bool allNegative = true;
-	for (int i = 0; i < n; ++i) {
-		Vec2 edge = polygon[(i + 1) % n] - polygon[i];
-		Vec2 toPoint = point - polygon[i];
-		float cross = edge.Cross(toPoint);
-		if (cross < 0) allPositive = false;
-		if (cross > 0) allNegative = false;
+	// Ray-casting algorithm: works for convex and concave polygons
+	bool inside = false;
+	for (int i = 0, j = n - 1; i < n; j = i++) {
+		float yi = polygon[i].y, yj = polygon[j].y;
+		float xi = polygon[i].x, xj = polygon[j].x;
+		if ((yi > point.y) != (yj > point.y) &&
+			point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi) {
+			inside = !inside;
+		}
 	}
-	return allPositive || allNegative;
+	return inside;
 }
 
 bool SegmentPolygon(Vec2 prev, Vec2 curr, const std::vector<Vec2>& polygon,

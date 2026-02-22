@@ -170,6 +170,9 @@ void Arena::Update(float dt, const InputManager& input) {
 	// Obstacle collisions for tanks
 	CheckObstacleCollisions();
 
+	// Tank vs tank collisions
+	CheckTankCollisions();
+
 	// Update & collide projectiles
 	UpdateProjectiles(dt);
 	CheckBulletCollisions();
@@ -329,12 +332,15 @@ void Arena::CheckBoundaryCollisions() {
 	for (auto& tank : m_tanks) {
 		if (!tank.IsAlive()) continue;
 
-		auto poly = tank.GetBodyPolygon();
-		Vec2 push = Collision::PushOutOfBounds(poly, 0.0f, 0.0f, m_width, m_height);
+		Vec2 pos = tank.GetPosition();
+		float r = Tank::COLLISION_RADIUS;
 
-		if (push.x != 0.0f || push.y != 0.0f) {
-			tank.SetPosition(tank.GetPosition() + push);
-		}
+		if (pos.x < r)            pos.x = r;
+		if (pos.x > m_width - r)  pos.x = m_width - r;
+		if (pos.y < r)            pos.y = r;
+		if (pos.y > m_height - r) pos.y = m_height - r;
+
+		tank.SetPosition(pos);
 	}
 }
 
@@ -405,6 +411,8 @@ void Arena::CheckRoundEnd() {
 }
 
 void Arena::CheckObstacleCollisions() {
+	float r = Tank::COLLISION_RADIUS;
+
 	for (auto& tank : m_tanks) {
 		if (!tank.IsAlive()) continue;
 		Vec2 tankPos = tank.GetPosition();
@@ -413,25 +421,79 @@ void Arena::CheckObstacleCollisions() {
 			const auto& verts = obs.GetVertices();
 			if (verts.size() < 3) continue;
 
-			// Simple: if tank center is inside obstacle, push out
+			int n = static_cast<int>(verts.size());
+
+			// If center is inside polygon, push out along nearest edge normal
 			if (Collision::PointInPolygon(tankPos, verts)) {
-				// Find nearest edge and push tank out
 				float bestDist = 1e9f;
 				Vec2 bestPush = {0, 0};
-				int n = static_cast<int>(verts.size());
 				for (int i = 0; i < n; ++i) {
 					Vec2 a = verts[i];
 					Vec2 b = verts[(i + 1) % n];
 					Vec2 edge = b - a;
 					Vec2 normal = Vec2(-edge.y, edge.x).Normalized();
-					// Project tank center onto edge normal
 					float dist = (tankPos - a).Dot(normal);
 					if (std::abs(dist) < bestDist) {
 						bestDist = std::abs(dist);
-						bestPush = normal * (-dist - 1.0f);
+						bestPush = normal * (-dist - r - 1.0f);
 					}
 				}
-				tank.SetPosition(tankPos + bestPush);
+				tankPos = tankPos + bestPush;
+				tank.SetPosition(tankPos);
+				continue;
+			}
+
+			// Circle vs polygon edges: push out if within radius
+			for (int i = 0; i < n; ++i) {
+				Vec2 a = verts[i];
+				Vec2 b = verts[(i + 1) % n];
+				Vec2 ab = b - a;
+				float len2 = ab.Dot(ab);
+				if (len2 < 1e-8f) continue;
+
+				// Project tank center onto edge, clamp to segment
+				float t = (tankPos - a).Dot(ab) / len2;
+				t = std::max(0.0f, std::min(1.0f, t));
+				Vec2 closest = a + ab * t;
+
+				Vec2 diff = tankPos - closest;
+				float dist2 = diff.Dot(diff);
+				if (dist2 < r * r && dist2 > 1e-8f) {
+					float dist = std::sqrt(dist2);
+					Vec2 pushDir = diff * (1.0f / dist);
+					tankPos = closest + pushDir * (r + 0.5f);
+					tank.SetPosition(tankPos);
+				}
+			}
+		}
+	}
+}
+
+void Arena::CheckTankCollisions() {
+	float r = Tank::COLLISION_RADIUS;
+	float minDist = r * 2.0f;
+
+	for (size_t i = 0; i < m_tanks.size(); ++i) {
+		if (!m_tanks[i].IsAlive()) continue;
+
+		for (size_t j = i + 1; j < m_tanks.size(); ++j) {
+			if (!m_tanks[j].IsAlive()) continue;
+
+			Vec2 posA = m_tanks[i].GetPosition();
+			Vec2 posB = m_tanks[j].GetPosition();
+			Vec2 diff = posA - posB;
+			float dist2 = diff.Dot(diff);
+
+			if (dist2 < minDist * minDist && dist2 > 1e-8f) {
+				float dist = std::sqrt(dist2);
+				Vec2 dir = diff * (1.0f / dist);
+				float overlap = (minDist - dist) * 0.5f + 0.5f;
+				m_tanks[i].SetPosition(posA + dir * overlap);
+				m_tanks[j].SetPosition(posB - dir * overlap);
+			} else if (dist2 <= 1e-8f) {
+				// Exactly overlapping: nudge apart
+				m_tanks[i].SetPosition(posA + Vec2(1.0f, 0.0f));
+				m_tanks[j].SetPosition(posB - Vec2(1.0f, 0.0f));
 			}
 		}
 	}

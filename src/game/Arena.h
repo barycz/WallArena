@@ -58,6 +58,7 @@ private:
 	void CheckBulletCollisions();
 	void CheckBoundaryCollisions();
 	void CheckObstacleCollisions();
+	void CheckTankCollisions();
 	void CheckBulletObstacleCollisions();
 	void CheckPowerUpPickups();
 	void UpdateAutoAim(float dt);
