@@ -214,7 +214,7 @@ void Game::Render() {
 				renderer->DrawLine({cx - titleW * 0.5f, 200}, {cx + titleW * 0.5f, 200}, dim);
 
 				// Menu items
-				const char* modeNames[] = {"FRAG LIMIT", "TIME LIMIT", "LAST MAN STANDING"};
+				const char* modeNames[] = {"TIME LIMIT", "FRAG LIMIT", "LAST MAN STANDING"};
 				const char* labels[] = {
 					"START GAME",
 					modeNames[static_cast<int>(m_modeSettings.mode)],

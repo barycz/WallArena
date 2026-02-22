@@ -44,7 +44,8 @@ void Arena::Init(float width, float height, int playerCount) {
 	}
 
 	// Init lives for LMS
-	m_livesRemaining.resize(playerCount, m_modeSettings.respawnLives);
+	m_livesRemaining.clear();
+	m_livesRemaining.assign(playerCount, m_modeSettings.respawnLives);
 
 	// Init power-up spawn locations
 	InitPowerUpSpawns();
@@ -92,7 +93,8 @@ void Arena::InitFromMap(const Map& map, int playerCount) {
 	}
 
 	// Init lives for LMS
-	m_livesRemaining.resize(playerCount, m_modeSettings.respawnLives);
+	m_livesRemaining.clear();
+	m_livesRemaining.assign(playerCount, m_modeSettings.respawnLives);
 
 	// Power-up spawns from map
 	m_powerUps.clear();
@@ -301,6 +303,8 @@ void Arena::CheckBulletCollisions() {
 
 			auto poly = tank.GetBodyPolygon();
 			if (Collision::PointInPolygon(proj.GetPosition(), poly)) {
+				// Small hit effect in victim's color
+				m_deathEffects.push_back({proj.GetPosition(), tank.GetColor(), 0.15f});
 				tank.TakeDamage(1);
 				proj.Kill();
 
@@ -442,6 +446,7 @@ void Arena::CheckBulletObstacleCollisions() {
 			if (verts.size() < 3) continue;
 
 			if (Collision::PointInPolygon(proj.GetPosition(), verts)) {
+				m_deathEffects.push_back({proj.GetPosition(), Color(200, 200, 200), 0.3f});
 				proj.Kill();
 				break;
 			}
@@ -483,9 +488,19 @@ void Arena::Render(IRenderer& renderer) const {
 }
 
 void Arena::RenderDeathEffect(IRenderer& renderer, Vec2 pos, Color color, float timer) const {
-	float progress = 1.0f - (timer / 0.8f); // 0 -> 1
-	int numLines = 8;
-	float radius = 20.0f + progress * 60.0f;
+	// Three sizes: tiny hit (<=0.15), small obstacle (<=0.3), large death (<=0.8)
+	float maxTime;
+	int numLines;
+	float baseRadius, expandRadius;
+	if (timer <= 0.15f) {
+		maxTime = 0.15f; numLines = 4; baseRadius = 4.0f; expandRadius = 10.0f;
+	} else if (timer <= 0.3f) {
+		maxTime = 0.3f; numLines = 5; baseRadius = 8.0f; expandRadius = 20.0f;
+	} else {
+		maxTime = 0.8f; numLines = 8; baseRadius = 20.0f; expandRadius = 60.0f;
+	}
+	float progress = 1.0f - (timer / maxTime); // 0 -> 1
+	float radius = baseRadius + progress * expandRadius;
 
 	Color c = color;
 	c.a = static_cast<uint8_t>(255 * (1.0f - progress));
@@ -600,10 +615,10 @@ void Arena::RenderHUD(IRenderer& renderer) const {
 		Color c = tank.GetColor();
 		int idx = tank.GetPlayerIndex();
 
-		// "P1:" label
-		std::string label = "P" + std::to_string(idx + 1);
+		// "P1 - N" label
+		std::string label = "P" + std::to_string(idx + 1) + " - ";
 		VectorFont::DrawText(renderer, label, {xStart, y}, scale, c);
-		float lx = xStart + VectorFont::MeasureWidth(label, scale) + 5.0f;
+		float lx = xStart + VectorFont::MeasureWidth(label, scale);
 
 		// Kill count
 		std::string killStr = std::to_string(tank.kills);
