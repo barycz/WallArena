@@ -48,6 +48,10 @@ bool MapSerializer::Save(const Map& map, const std::string& filepath) {
 			 << " " << static_cast<int>(ps.type) << "\n";
 	}
 
+	for (const auto& bp : map.GetBountySpawns()) {
+		file << "BOUNTY " << bp.x << " " << bp.y << "\n";
+	}
+
 	return true;
 }
 
@@ -115,6 +119,11 @@ bool MapSerializer::Load(Map& map, const std::string& filepath) {
 			iss >> ps.position.x >> ps.position.y >> typeInt;
 			ps.type = static_cast<PowerUpType>(typeInt);
 			map.AddPowerUpSpawn(ps);
+		}
+		else if (token == "BOUNTY") {
+			Vec2 pos;
+			iss >> pos.x >> pos.y;
+			map.AddBountySpawn(pos);
 		}
 	}
 

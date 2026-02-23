@@ -105,6 +105,23 @@ void Arena::InitFromMap(const Map& map, int playerCount) {
 	if (m_powerUps.empty()) {
 		InitPowerUpSpawns();
 	}
+
+	// Init bounty system for Hunt mode
+	if (m_modeSettings.mode == GameMode::Hunt) {
+		std::vector<Vec2> bountySpawns = map.GetBountySpawns();
+		// If no bounty spawns defined, generate defaults
+		if (bountySpawns.empty()) {
+			float cx = m_width * 0.5f;
+			float cy = m_height * 0.5f;
+			float off = 150.0f;
+			bountySpawns.push_back({cx, cy});
+			bountySpawns.push_back({cx - off, cy - off});
+			bountySpawns.push_back({cx + off, cy - off});
+			bountySpawns.push_back({cx + off, cy + off});
+			bountySpawns.push_back({cx - off, cy + off});
+		}
+		m_bounty.Init(bountySpawns, playerCount);
+	}
 }
 
 void Arena::SetGameMode(const GameModeSettings& settings) {
@@ -161,6 +178,11 @@ void Arena::Update(float dt, const InputManager& input) {
 			SpawnBullet(tank.GetPlayerIndex(), homing);
 			if (homing) tank.ConsumeHomingRocket();
 			tank.ResetFireCooldown();
+			// Balancing: kill leader gets 50% slower fire rate
+			if (m_modeSettings.mutators.balancing &&
+				tank.GetPlayerIndex() == GetKillLeaderIndex()) {
+				tank.AddFireCooldown(Tank::FIRE_COOLDOWN * 0.5f);
+			}
 		}
 	}
 
@@ -177,6 +199,17 @@ void Arena::Update(float dt, const InputManager& input) {
 	UpdateProjectiles(dt);
 	CheckBulletCollisions();
 	CheckBulletObstacleCollisions();
+
+	// Bounty system (Hunt mode)
+	if (m_modeSettings.mode == GameMode::Hunt) {
+		if (!m_bounty.active) {
+			m_bounty.respawnTimer -= dt;
+			if (m_bounty.respawnTimer <= 0.0f) {
+				m_bounty.SpawnTarget();
+			}
+		}
+		CheckBountyHits();
+	}
 
 	// Power-up pickups
 	for (auto& pu : m_powerUps) pu.Update(dt);
@@ -276,6 +309,7 @@ void Arena::UpdateProjectiles(float dt) {
 		if (bounced) {
 			proj.SetPosition(pos);
 			proj.SetVelocity(vel);
+			proj.IncrementBounce();
 		}
 	}
 
@@ -306,6 +340,13 @@ void Arena::CheckBulletCollisions() {
 
 			auto poly = tank.GetBodyPolygon();
 			if (Collision::PointInPolygon(proj.GetPosition(), poly)) {
+				// Billiard: projectile must have bounced at least once to deal damage
+				if (m_modeSettings.mutators.billiard && proj.GetBounceCount() == 0) {
+					// Visual feedback but no damage
+					m_deathEffects.push_back({proj.GetPosition(), Color(80, 80, 80), 0.15f});
+					proj.Kill();
+					break;
+				}
 				// Small hit effect in victim's color
 				m_deathEffects.push_back({proj.GetPosition(), tank.GetColor(), 0.15f});
 				tank.TakeDamage(1);
@@ -318,6 +359,11 @@ void Arena::CheckBulletCollisions() {
 							t.kills++;
 							break;
 						}
+					}
+					// Balancing: kill leader gets longer respawn
+					if (m_modeSettings.mutators.balancing &&
+						tank.GetPlayerIndex() == GetKillLeaderIndex()) {
+						tank.SetRespawnDelay(Tank::RESPAWN_DELAY * 1.5f);
 					}
 					// Death effect
 					m_deathEffects.push_back({tank.GetPosition(), tank.GetColor(), 0.8f});
@@ -404,6 +450,16 @@ void Arena::CheckRoundEnd() {
 			if (aliveCount <= 1 && m_tanks.size() > 1) {
 				m_roundOver = true;
 				m_winnerIndex = lastAlive;
+			}
+			break;
+		}
+		case GameMode::Hunt: {
+			for (int i = 0; i < static_cast<int>(m_bounty.scores.size()); ++i) {
+				if (m_bounty.scores[i] >= m_modeSettings.huntScore) {
+					m_roundOver = true;
+					m_winnerIndex = i;
+					return;
+				}
 			}
 			break;
 		}
@@ -508,8 +564,49 @@ void Arena::CheckBulletObstacleCollisions() {
 			if (verts.size() < 3) continue;
 
 			if (Collision::PointInPolygon(proj.GetPosition(), verts)) {
-				m_deathEffects.push_back({proj.GetPosition(), Color(200, 200, 200), 0.3f});
-				proj.Kill();
+				if (m_modeSettings.mutators.billiard) {
+					// Reflect off nearest edge
+					Vec2 p = proj.GetPosition();
+					float bestDist2 = 1e18f;
+					Vec2 bestNormal = {0, -1};
+					Vec2 bestClosest = p;
+
+					for (size_t i = 0; i < verts.size(); ++i) {
+						Vec2 a = verts[i];
+						Vec2 b = verts[(i + 1) % verts.size()];
+						Vec2 ab = b - a;
+						float len2 = ab.Dot(ab);
+						if (len2 < 1e-8f) continue;
+						float t = (p - a).Dot(ab) / len2;
+						t = std::max(0.0f, std::min(1.0f, t));
+						Vec2 closest = a + ab * t;
+						float d2 = (p - closest).Dot(p - closest);
+						if (d2 < bestDist2) {
+							bestDist2 = d2;
+							bestClosest = closest;
+							// Edge normal (outward)
+							Vec2 edge = ab.Normalized();
+							bestNormal = {-edge.y, edge.x};
+							// Ensure normal points away from polygon center
+							Vec2 mid = (a + b) * 0.5f;
+							Vec2 toP = p - mid;
+							if (toP.Dot(bestNormal) < 0) bestNormal = bestNormal * -1.0f;
+						}
+					}
+
+					// Reflect velocity
+					Vec2 vel = proj.GetVelocity();
+					float dot = vel.Dot(bestNormal);
+					Vec2 reflected = vel - bestNormal * (2.0f * dot);
+					proj.SetVelocity(reflected);
+					// Push projectile out of obstacle
+					proj.SetPosition(bestClosest + bestNormal * 2.0f);
+					proj.IncrementBounce();
+					m_deathEffects.push_back({bestClosest, Color(200, 200, 200), 0.3f});
+				} else {
+					m_deathEffects.push_back({proj.GetPosition(), Color(200, 200, 200), 0.3f});
+					proj.Kill();
+				}
 				break;
 			}
 		}
@@ -543,6 +640,12 @@ void Arena::Render(IRenderer& renderer) const {
 	// Power-ups
 	for (const auto& pu : m_powerUps) {
 		pu.Render(renderer);
+	}
+
+	// Bounty target (Hunt mode)
+	if (m_modeSettings.mode == GameMode::Hunt) {
+		m_bounty.Render(renderer);
+		m_bounty.RenderHint(renderer, m_roundTimer);
 	}
 
 	// HUD
@@ -682,10 +785,16 @@ void Arena::RenderHUD(IRenderer& renderer) const {
 		VectorFont::DrawText(renderer, label, {xStart, y}, scale, c);
 		float lx = xStart + VectorFont::MeasureWidth(label, scale);
 
-		// Kill count
-		std::string killStr = std::to_string(tank.kills);
-		VectorFont::DrawText(renderer, killStr, {lx, y}, scale, c);
-		lx += VectorFont::MeasureWidth(killStr, scale) + 8.0f;
+		// Score display: hunt score in Hunt mode, kill count otherwise
+		std::string scoreStr;
+		if (m_modeSettings.mode == GameMode::Hunt &&
+			idx < static_cast<int>(m_bounty.scores.size())) {
+			scoreStr = std::to_string(m_bounty.scores[idx]);
+		} else {
+			scoreStr = std::to_string(tank.kills);
+		}
+		VectorFont::DrawText(renderer, scoreStr, {lx, y}, scale, c);
+		lx += VectorFont::MeasureWidth(scoreStr, scale) + 8.0f;
 
 		// Health pips
 		for (int h = 0; h < tank.GetHealth(); ++h) {
@@ -729,4 +838,133 @@ void Arena::RenderHUD(IRenderer& renderer) const {
 		std::string fragStr = "FIRST TO " + std::to_string(m_modeSettings.fragLimit);
 		VectorFont::DrawTextCentered(renderer, fragStr, m_width * 0.5f, 5.0f, 1.5f, Color(60, 60, 60));
 	}
+
+	// Hunt score indicator
+	if (m_modeSettings.mode == GameMode::Hunt) {
+		std::string huntStr = "FIRST TO " + std::to_string(m_modeSettings.huntScore);
+		VectorFont::DrawTextCentered(renderer, huntStr, m_width * 0.5f, 5.0f, 1.5f, Color(60, 60, 60));
+	}
+}
+
+int Arena::GetKillLeaderIndex() const {
+	int bestKills = 0;
+	int leaderIdx = -1;
+	bool tied = false;
+	for (const auto& t : m_tanks) {
+		if (t.kills > bestKills) {
+			bestKills = t.kills;
+			leaderIdx = t.GetPlayerIndex();
+			tied = false;
+		} else if (t.kills == bestKills && bestKills > 0) {
+			tied = true;
+		}
+	}
+	// No leader if tied or no kills yet
+	return tied ? -1 : leaderIdx;
+}
+
+void Arena::CheckBountyHits() {
+	if (!m_bounty.active) return;
+
+	for (auto& proj : m_projectiles) {
+		if (!proj.IsAlive()) continue;
+
+		float dist = Vec2::Distance(proj.GetPosition(), m_bounty.position);
+		if (dist < Arena::BountySystem::TARGET_RADIUS) {
+			// Billiard gate applies to bounty too
+			if (m_modeSettings.mutators.billiard && proj.GetBounceCount() == 0) {
+				m_deathEffects.push_back({proj.GetPosition(), Color(80, 80, 80), 0.15f});
+				proj.Kill();
+				continue;
+			}
+
+			m_deathEffects.push_back({proj.GetPosition(), Color(255, 200, 0), 0.15f});
+			proj.Kill();
+			m_bounty.health--;
+
+			if (m_bounty.health <= 0) {
+				// Credit hunt point to shooter
+				int owner = proj.GetOwnerIndex();
+				if (owner >= 0 && owner < static_cast<int>(m_bounty.scores.size())) {
+					m_bounty.scores[owner]++;
+				}
+				m_deathEffects.push_back({m_bounty.position, Color(255, 200, 0), 0.8f});
+				m_bounty.active = false;
+				m_bounty.respawnTimer = Arena::BountySystem::RESPAWN_DELAY;
+				m_bounty.SelectNextSpawn();
+			}
+			break;
+		}
+	}
+}
+
+// --- BountySystem methods ---
+
+void Arena::BountySystem::Init(const std::vector<Vec2>& spawns, int playerCount) {
+	spawnPoints = spawns;
+	scores.assign(playerCount, 0);
+	health = 0;
+	active = false;
+	respawnTimer = 2.0f; // short initial delay before first target
+	SelectNextSpawn();
+}
+
+void Arena::BountySystem::SpawnTarget() {
+	position = nextSpawnPos;
+	health = MAX_HEALTH;
+	active = true;
+	respawnTimer = 0.0f;
+}
+
+void Arena::BountySystem::SelectNextSpawn() {
+	if (spawnPoints.empty()) return;
+	int idx = std::rand() % static_cast<int>(spawnPoints.size());
+	nextSpawnPos = spawnPoints[idx];
+}
+
+void Arena::BountySystem::Render(IRenderer& renderer) const {
+	if (!active) return;
+
+	Color gold(255, 200, 0);
+
+	// Diamond shape
+	float r = TARGET_RADIUS;
+	Vec2 top = position + Vec2(0, -r);
+	Vec2 right = position + Vec2(r, 0);
+	Vec2 bottom = position + Vec2(0, r);
+	Vec2 left = position + Vec2(-r, 0);
+	renderer.DrawLine(top, right, gold);
+	renderer.DrawLine(right, bottom, gold);
+	renderer.DrawLine(bottom, left, gold);
+	renderer.DrawLine(left, top, gold);
+
+	// Inner diamond
+	float r2 = r * 0.5f;
+	Vec2 top2 = position + Vec2(0, -r2);
+	Vec2 right2 = position + Vec2(r2, 0);
+	Vec2 bottom2 = position + Vec2(0, r2);
+	Vec2 left2 = position + Vec2(-r2, 0);
+	renderer.DrawLine(top2, right2, gold);
+	renderer.DrawLine(right2, bottom2, gold);
+	renderer.DrawLine(bottom2, left2, gold);
+	renderer.DrawLine(left2, top2, gold);
+
+	// Health pips above target
+	float pipY = position.y - r - 8.0f;
+	float totalW = (MAX_HEALTH - 1) * 8.0f;
+	for (int i = 0; i < health; ++i) {
+		float px = position.x - totalW * 0.5f + i * 8.0f;
+		renderer.DrawCircle({px, pipY}, 2.5f, gold, 4);
+	}
+}
+
+void Arena::BountySystem::RenderHint(IRenderer& renderer, float timer) const {
+	if (active) return; // no hint while target is alive
+
+	Color hint(255, 200, 0);
+	// Pulsing circle at next spawn position
+	float pulse = 0.5f + 0.5f * std::sin(timer * 6.0f);
+	uint8_t alpha = static_cast<uint8_t>(60 + 80 * pulse);
+	Color hintC(255, 200, 0, alpha);
+	renderer.DrawCircle(nextSpawnPos, TARGET_RADIUS * (1.0f + pulse * 0.3f), hintC, 8);
 }

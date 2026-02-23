@@ -13,7 +13,8 @@ public:
 		DrawObstacle,
 		PlaceSpawn,
 		PlacePowerUp,
-		Delete
+		Delete,
+		PlaceBountySpawn
 	};
 
 	MapEditor();

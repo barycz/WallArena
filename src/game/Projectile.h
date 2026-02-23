@@ -21,6 +21,8 @@ public:
 	void Kill() { m_alive = false; }
 	void SetVelocity(Vec2 vel) { m_velocity = vel; }
 	void SetPosition(Vec2 pos) { m_position = pos; }
+	int GetBounceCount() const { return m_bounceCount; }
+	void IncrementBounce() { m_bounceCount++; }
 
 	static constexpr float SPEED = 500.0f;
 	static constexpr float LIFETIME = 3.0f;
@@ -34,4 +36,5 @@ private:
 	int m_ownerIndex = -1;
 	bool m_alive = true;
 	float m_lifetime = LIFETIME;
+	int m_bounceCount = 0;
 };

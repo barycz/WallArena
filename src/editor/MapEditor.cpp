@@ -117,6 +117,14 @@ void MapEditor::HandleMouseDown(Vec2 worldPos, int button) {
 					DeleteSelected();
 				}
 				break;
+
+			case Tool::PlaceBountySpawn: {
+				m_undoState = *m_map;
+				m_hasUndo = true;
+				m_map->AddBountySpawn(worldPos);
+				m_dirty = true;
+				break;
+			}
 		}
 	}
 	else if (button == SDL_BUTTON_RIGHT) {
@@ -147,6 +155,17 @@ void MapEditor::HandleMouseDown(Vec2 worldPos, int button) {
 					m_undoState = *m_map;
 					m_hasUndo = true;
 					pups.erase(it);
+					m_dirty = true;
+					return;
+				}
+			}
+			// Check bounty spawns
+			auto& bspawns = m_map->GetBountySpawns();
+			for (auto it = bspawns.begin(); it != bspawns.end(); ++it) {
+				if (Vec2::Distance(*it, worldPos) < 20.0f) {
+					m_undoState = *m_map;
+					m_hasUndo = true;
+					bspawns.erase(it);
 					m_dirty = true;
 					return;
 				}
@@ -187,6 +206,7 @@ void MapEditor::HandleKeyDown(SDL_Keycode key) {
 		case SDLK_3: m_currentTool = Tool::PlaceSpawn; break;
 		case SDLK_4: m_currentTool = Tool::PlacePowerUp; break;
 		case SDLK_5: m_currentTool = Tool::Delete; break;
+		case SDLK_6: m_currentTool = Tool::PlaceBountySpawn; break;
 
 		case SDLK_g: m_snapToGrid = !m_snapToGrid; break;
 
@@ -348,6 +368,20 @@ void MapEditor::Render(IRenderer& renderer) const {
 		renderer.DrawCircle(ps.position, 6.0f, c, 4);
 	}
 
+	// Bounty spawn points (gold diamonds)
+	Color gold(255, 200, 0);
+	for (const auto& bp : m_map->GetBountySpawns()) {
+		float r = 10.0f;
+		Vec2 top = bp + Vec2(0, -r);
+		Vec2 right = bp + Vec2(r, 0);
+		Vec2 bottom = bp + Vec2(0, r);
+		Vec2 left = bp + Vec2(-r, 0);
+		renderer.DrawLine(top, right, gold);
+		renderer.DrawLine(right, bottom, gold);
+		renderer.DrawLine(bottom, left, gold);
+		renderer.DrawLine(left, top, gold);
+	}
+
 	// Tool info
 	RenderToolInfo(renderer);
 }
@@ -378,10 +412,10 @@ void MapEditor::RenderToolInfo(IRenderer& renderer) const {
 	float x = 10.0f;
 	float toolScale = 1.5f;
 
-	const char* toolNames[] = {"1-SELECT", "2-DRAW", "3-SPAWN", "4-POWERUP", "5-DELETE"};
+	const char* toolNames[] = {"1-SELECT", "2-DRAW", "3-SPAWN", "4-POWERUP", "5-DELETE", "6-BOUNTY"};
 	int toolIdx = static_cast<int>(m_currentTool);
 
-	for (int i = 0; i < 5; ++i) {
+	for (int i = 0; i < 6; ++i) {
 		Color c = (i == toolIdx) ? Color::Yellow() : Color(50, 50, 50);
 		VectorFont::DrawText(renderer, toolNames[i], {x, y}, toolScale, c);
 		x += VectorFont::MeasureWidth(toolNames[i], toolScale) + 15.0f;

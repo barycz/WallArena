@@ -86,40 +86,39 @@ void Game::ProcessEvents() {
 
 		if (event.type == SDL_KEYDOWN) {
 			switch (m_state) {
-				case GameState::Menu:
+				case GameState::Menu: {
+					constexpr int MENU_ITEMS = 7;
+					// Row layout: 0=START, 1=MODE, 2=BALANCE, 3=BILLIARD, 4=MAP, 5=EDITOR, 6=QUIT
 					if (event.key.keysym.sym == SDLK_UP) {
-						m_menuSelection = (m_menuSelection - 1 + 5) % 5;
+						m_menuSelection = (m_menuSelection - 1 + MENU_ITEMS) % MENU_ITEMS;
 					} else if (event.key.keysym.sym == SDLK_DOWN) {
-						m_menuSelection = (m_menuSelection + 1) % 5;
-					} else if (event.key.keysym.sym == SDLK_LEFT) {
+						m_menuSelection = (m_menuSelection + 1) % MENU_ITEMS;
+					} else if (event.key.keysym.sym == SDLK_LEFT || event.key.keysym.sym == SDLK_RIGHT) {
 						if (m_menuSelection == 1) {
-							// Cycle game mode backward
-							int m = (static_cast<int>(m_modeSettings.mode) + 2) % 3;
+							// Cycle game mode (4 modes)
+							int dir = (event.key.keysym.sym == SDLK_LEFT) ? 3 : 1;
+							int m = (static_cast<int>(m_modeSettings.mode) + dir) % 4;
 							m_modeSettings.mode = static_cast<GameMode>(m);
 						} else if (m_menuSelection == 2) {
-							// Cycle map backward
+							// Toggle balance mutator
+							m_modeSettings.mutators.balancing = !m_modeSettings.mutators.balancing;
+						} else if (m_menuSelection == 3) {
+							// Toggle billiard mutator
+							m_modeSettings.mutators.billiard = !m_modeSettings.mutators.billiard;
+						} else if (m_menuSelection == 4) {
+							// Cycle map
 							int n = static_cast<int>(m_mapFiles.size());
-							m_mapIndex = (m_mapIndex - 1 + n) % n;
-							LoadSelectedMap();
-						}
-					} else if (event.key.keysym.sym == SDLK_RIGHT) {
-						if (m_menuSelection == 1) {
-							// Cycle game mode forward
-							int m = (static_cast<int>(m_modeSettings.mode) + 1) % 3;
-							m_modeSettings.mode = static_cast<GameMode>(m);
-						} else if (m_menuSelection == 2) {
-							// Cycle map forward
-							int n = static_cast<int>(m_mapFiles.size());
-							m_mapIndex = (m_mapIndex + 1) % n;
+							int dir = (event.key.keysym.sym == SDLK_LEFT) ? -1 : 1;
+							m_mapIndex = (m_mapIndex + dir + n) % n;
 							LoadSelectedMap();
 						}
 					} else if (event.key.keysym.sym == SDLK_RETURN) {
 						if (m_menuSelection == 0) {
 							StartNewRound();
-						} else if (m_menuSelection == 3) {
+						} else if (m_menuSelection == 5) {
 							m_mapEditor.Init(&m_currentMap, m_mapFiles[m_mapIndex]);
 							m_state = GameState::Editor;
-						} else if (m_menuSelection == 4) {
+						} else if (m_menuSelection == 6) {
 							m_running = false;
 							m_state = GameState::Quit;
 						}
@@ -128,6 +127,7 @@ void Game::ProcessEvents() {
 						m_state = GameState::Quit;
 					}
 					break;
+				}
 
 				case GameState::Playing:
 					if (event.key.keysym.sym == SDLK_ESCAPE) {
@@ -270,42 +270,54 @@ void Game::Render() {
 				renderer->DrawLine({cx - titleW * 0.5f, 200}, {cx + titleW * 0.5f, 200}, dim);
 
 				// Menu items
-				const char* modeNames[] = {"TIME LIMIT", "FRAG LIMIT", "LAST MAN STANDING"};
+				constexpr int MENU_ITEMS = 7;
+				const char* modeNames[] = {"TIME LIMIT", "FRAG LIMIT", "LAST MAN STANDING", "HUNT"};
 				std::string mapName = m_mapNames.empty() ? "DEFAULT" : m_mapNames[m_mapIndex];
-				// Convert map name to uppercase
 				for (auto& ch : mapName) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+
+				std::string balanceStr = std::string("BALANCE: ") + (m_modeSettings.mutators.balancing ? "ON" : "OFF");
+				std::string billiardStr = std::string("BILLIARD: ") + (m_modeSettings.mutators.billiard ? "ON" : "OFF");
 
 				std::string labels[] = {
 					"START GAME",
 					modeNames[static_cast<int>(m_modeSettings.mode)],
+					balanceStr,
+					billiardStr,
 					mapName,
 					"MAP EDITOR",
 					"QUIT"
 				};
-				float menuY = 280.0f;
-				float itemSpacing = 55.0f;
+				float menuY = 260.0f;
+				float itemSpacing = 42.0f;
 
-				for (int i = 0; i < 5; ++i) {
+				for (int i = 0; i < MENU_ITEMS; ++i) {
 					Color c = (i == m_menuSelection) ? highlight : dim;
+					// Mutator rows use green when ON
+					if ((i == 2 && m_modeSettings.mutators.balancing) ||
+						(i == 3 && m_modeSettings.mutators.billiard)) {
+						c = (i == m_menuSelection) ? highlight : Color(0, 180, 0);
+					}
 					float y = menuY + i * itemSpacing;
+					float sc = (i >= 2 && i <= 3) ? 2.5f : 3.5f; // smaller for mutators
 
-					VectorFont::DrawTextCentered(*renderer, labels[i], cx, y, 3.5f, c);
+					VectorFont::DrawTextCentered(*renderer, labels[i], cx, y, sc, c);
 
 					// Selection arrow
 					if (i == m_menuSelection) {
-						float textW = VectorFont::MeasureWidth(labels[i], 3.5f);
+						float textW = VectorFont::MeasureWidth(labels[i], sc);
 						float ax = cx - textW * 0.5f - 20.0f;
-						float ay = y + 12.0f;
+						float ay = y + sc * 3.5f;
 						renderer->DrawLine({ax, ay - 8}, {ax + 10, ay}, highlight);
 						renderer->DrawLine({ax + 10, ay}, {ax, ay + 8}, highlight);
 					}
 
-					// Left/right arrows for mode and map selection
-					if (i == 1 || i == 2) {
-						float textW = VectorFont::MeasureWidth(labels[i], 3.5f);
+					// Left/right arrows for cyclable/toggleable rows
+					if (i == 1 || i == 2 || i == 3 || i == 4) {
+						float sc2 = (i >= 2 && i <= 3) ? 2.5f : 3.5f;
+						float textW = VectorFont::MeasureWidth(labels[i], sc2);
 						float lx = cx - textW * 0.5f - 30.0f;
 						float rx = cx + textW * 0.5f + 20.0f;
-						float ay = y + 12.0f;
+						float ay = y + sc2 * 3.5f;
 						renderer->DrawLine({lx + 10, ay - 8}, {lx, ay}, white);
 						renderer->DrawLine({lx, ay}, {lx + 10, ay + 8}, white);
 						renderer->DrawLine({rx, ay - 8}, {rx + 10, ay}, white);
@@ -315,11 +327,11 @@ void Game::Render() {
 
 				// Player count indicator
 				int pc = m_input.GetPlayerCount();
-				VectorFont::DrawTextCentered(*renderer, "PLAYERS", cx, 600, 2.5f, dim);
+				VectorFont::DrawTextCentered(*renderer, "PLAYERS", cx, 570, 2.5f, dim);
 				for (int i = 0; i < pc; ++i) {
 					Color c = Color::FromIndex(i);
 					float px = cx - (pc * 15.0f) + i * 30.0f;
-					renderer->DrawRect({px, 630}, {20, 20}, c);
+					renderer->DrawRect({px, 600}, {20, 20}, c);
 				}
 
 				// Controls hint

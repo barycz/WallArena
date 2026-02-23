@@ -25,6 +25,11 @@ void Tank::Update(float dt, const PlayerInput& input) {
 		m_invulnTimer -= dt;
 	}
 
+	// Shield hit flash countdown
+	if (m_shieldHitFlash > 0.0f) {
+		m_shieldHitFlash -= dt;
+	}
+
 	// Fire cooldown
 	if (m_fireCooldown > 0.0f) {
 		m_fireCooldown -= dt;
@@ -78,9 +83,16 @@ void Tank::Render(IRenderer& renderer) const {
 		renderer.DrawCircle(pos, 2.0f, Color::Green(), 4);
 	}
 
-	// Shield visual: outer ring
+	// Shield visual: outer ring (blinks when hit)
 	if (HasShield()) {
-		renderer.DrawCircle(m_position, BODY_HALF_H + 5.0f, Color(100, 200, 255), 12);
+		bool drawShield = true;
+		if (m_shieldHitFlash > 0.0f) {
+			int blink = static_cast<int>(m_shieldHitFlash * 20.0f);
+			drawShield = (blink % 2 == 0);
+		}
+		if (drawShield) {
+			renderer.DrawCircle(m_position, BODY_HALF_H + 5.0f, Color(100, 200, 255), 12);
+		}
 	}
 
 	// Active power-up indicator dot
@@ -101,6 +113,10 @@ bool Tank::CanFire() const {
 
 void Tank::ResetFireCooldown() {
 	m_fireCooldown = FIRE_COOLDOWN * GetFireCooldownMultiplier();
+}
+
+void Tank::AddFireCooldown(float extra) {
+	m_fireCooldown += extra;
 }
 
 void Tank::TakeDamage(int amount) {
@@ -126,6 +142,10 @@ void Tank::Kill() {
 	deaths++;
 }
 
+void Tank::SetRespawnDelay(float delay) {
+	m_respawnTimer = delay;
+}
+
 void Tank::Respawn(Vec2 pos, float angle) {
 	m_position = pos;
 	m_angle = angle;
@@ -135,6 +155,7 @@ void Tank::Respawn(Vec2 pos, float angle) {
 	m_fireCooldown = 0.0f;
 	m_invulnTimer = INVULN_TIME;
 	m_respawnTimer = 0.0f;
+	m_shieldHitFlash = 0.0f;
 	m_activePowerUp.reset();
 }
 
@@ -183,7 +204,7 @@ bool Tank::HasShield() const {
 
 void Tank::ConsumeShield() {
 	if (HasShield()) {
-		m_activePowerUp.reset();
+		m_shieldHitFlash = 0.3f;
 	}
 }
 

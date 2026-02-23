@@ -38,6 +38,11 @@ public:
 	const std::vector<PowerUpSpawnPoint>& GetPowerUpSpawns() const { return m_powerUpSpawns; }
 	void AddPowerUpSpawn(const PowerUpSpawnPoint& ps) { m_powerUpSpawns.push_back(ps); }
 
+	// Bounty spawn points (for Hunt mode)
+	std::vector<Vec2>& GetBountySpawns() { return m_bountySpawns; }
+	const std::vector<Vec2>& GetBountySpawns() const { return m_bountySpawns; }
+	void AddBountySpawn(const Vec2& pos) { m_bountySpawns.push_back(pos); }
+
 	// Default game mode for this map
 	GameModeSettings& GetDefaultMode() { return m_defaultMode; }
 	const GameModeSettings& GetDefaultMode() const { return m_defaultMode; }
@@ -52,5 +57,6 @@ private:
 	std::vector<Obstacle> m_obstacles;
 	std::vector<SpawnPoint> m_spawnPoints;
 	std::vector<PowerUpSpawnPoint> m_powerUpSpawns;
+	std::vector<Vec2> m_bountySpawns;
 	GameModeSettings m_defaultMode;
 };

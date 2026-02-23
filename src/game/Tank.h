@@ -32,8 +32,10 @@ public:
 	// Gameplay
 	bool CanFire() const;
 	void ResetFireCooldown();
+	void AddFireCooldown(float extra);
 	void TakeDamage(int amount);
 	void Kill();
+	void SetRespawnDelay(float delay);
 	void Respawn(Vec2 pos, float angle);
 	void SetPosition(Vec2 pos) { m_position = pos; }
 
@@ -80,6 +82,7 @@ private:
 	float m_fireCooldown = 0.0f;
 	float m_respawnTimer = 0.0f;
 	float m_invulnTimer = 0.0f;
+	float m_shieldHitFlash = 0.0f; // blink timer when shield blocks a hit
 
 	std::optional<ActivePowerUp> m_activePowerUp;
 };
