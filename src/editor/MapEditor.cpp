@@ -7,8 +7,9 @@ static constexpr float PI = 3.14159265f;
 
 MapEditor::MapEditor() = default;
 
-void MapEditor::Init(Map* map) {
+void MapEditor::Init(Map* map, const std::string& filePath) {
 	m_map = map;
+	m_filePath = filePath;
 	m_currentTool = Tool::Select;
 	m_dirty = false;
 	m_selectedObstacle = -1;
@@ -212,7 +213,12 @@ void MapEditor::HandleKeyDown(SDL_Keycode key) {
 		case SDLK_s:
 			// Save
 			if (m_map) {
-				MapSerializer::Save(*m_map, "assets/maps/" + m_map->GetName() + ".map");
+				std::string path = m_filePath.empty()
+					? ("assets/maps/" + m_map->GetName() + ".map")
+					: m_filePath;
+				MapSerializer::Save(*m_map, path);
+				m_filePath = path;
+				m_dirty = false;
 			}
 			break;
 

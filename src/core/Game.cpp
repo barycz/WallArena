@@ -6,6 +6,7 @@
 #include <SDL.h>
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 
 Game::Game() = default;
 Game::~Game() { Shutdown(); }
@@ -36,11 +37,8 @@ bool Game::Init() {
 	m_running = true;
 	m_state = GameState::Menu;
 
-	// Try loading default map from file, fall back to generated default
-	if (!MapSerializer::Load(m_currentMap, "assets/maps/Default Arena.map")) {
-		m_currentMap = Map::CreateDefault();
-	}
-	m_modeSettings = m_currentMap.GetDefaultMode();
+	ScanMaps();
+	LoadSelectedMap();
 
 	return true;
 }
@@ -90,28 +88,38 @@ void Game::ProcessEvents() {
 			switch (m_state) {
 				case GameState::Menu:
 					if (event.key.keysym.sym == SDLK_UP) {
-						m_menuSelection = (m_menuSelection - 1 + 4) % 4;
+						m_menuSelection = (m_menuSelection - 1 + 5) % 5;
 					} else if (event.key.keysym.sym == SDLK_DOWN) {
-						m_menuSelection = (m_menuSelection + 1) % 4;
+						m_menuSelection = (m_menuSelection + 1) % 5;
 					} else if (event.key.keysym.sym == SDLK_LEFT) {
-						// Cycle game mode backward
 						if (m_menuSelection == 1) {
+							// Cycle game mode backward
 							int m = (static_cast<int>(m_modeSettings.mode) + 2) % 3;
 							m_modeSettings.mode = static_cast<GameMode>(m);
+						} else if (m_menuSelection == 2) {
+							// Cycle map backward
+							int n = static_cast<int>(m_mapFiles.size());
+							m_mapIndex = (m_mapIndex - 1 + n) % n;
+							LoadSelectedMap();
 						}
 					} else if (event.key.keysym.sym == SDLK_RIGHT) {
-						// Cycle game mode forward
 						if (m_menuSelection == 1) {
+							// Cycle game mode forward
 							int m = (static_cast<int>(m_modeSettings.mode) + 1) % 3;
 							m_modeSettings.mode = static_cast<GameMode>(m);
+						} else if (m_menuSelection == 2) {
+							// Cycle map forward
+							int n = static_cast<int>(m_mapFiles.size());
+							m_mapIndex = (m_mapIndex + 1) % n;
+							LoadSelectedMap();
 						}
 					} else if (event.key.keysym.sym == SDLK_RETURN) {
 						if (m_menuSelection == 0) {
 							StartNewRound();
-						} else if (m_menuSelection == 2) {
-							m_mapEditor.Init(&m_currentMap);
-							m_state = GameState::Editor;
 						} else if (m_menuSelection == 3) {
+							m_mapEditor.Init(&m_currentMap, m_mapFiles[m_mapIndex]);
+							m_state = GameState::Editor;
+						} else if (m_menuSelection == 4) {
 							m_running = false;
 							m_state = GameState::Quit;
 						}
@@ -136,6 +144,8 @@ void Game::ProcessEvents() {
 
 				case GameState::Editor:
 					if (event.key.keysym.sym == SDLK_ESCAPE) {
+						ScanMaps();
+						LoadSelectedMap();
 						m_state = GameState::Menu;
 						break;
 					}
@@ -156,6 +166,52 @@ void Game::ProcessEvents() {
 
 		m_input.Update(event);
 	}
+}
+
+void Game::ScanMaps() {
+	m_mapFiles.clear();
+	m_mapNames.clear();
+
+	// Always include the built-in default as first entry
+	m_mapFiles.push_back("");
+	m_mapNames.push_back("DEFAULT");
+
+	namespace fs = std::filesystem;
+	fs::path mapDir = "assets/maps";
+	if (!fs::exists(mapDir)) {
+		fs::create_directories(mapDir);
+	}
+
+	if (fs::is_directory(mapDir)) {
+		std::vector<fs::path> paths;
+		for (const auto& entry : fs::directory_iterator(mapDir)) {
+			if (entry.is_regular_file() && entry.path().extension() == ".map") {
+				paths.push_back(entry.path());
+			}
+		}
+		std::sort(paths.begin(), paths.end());
+		for (const auto& p : paths) {
+			m_mapFiles.push_back(p.string());
+			m_mapNames.push_back(p.stem().string());
+		}
+	}
+
+	// Clamp index
+	if (m_mapIndex >= static_cast<int>(m_mapFiles.size())) {
+		m_mapIndex = 0;
+	}
+}
+
+void Game::LoadSelectedMap() {
+	if (m_mapIndex <= 0 || m_mapIndex >= static_cast<int>(m_mapFiles.size())) {
+		// Index 0 = built-in default
+		m_currentMap = Map::CreateDefault();
+	} else {
+		if (!MapSerializer::Load(m_currentMap, m_mapFiles[m_mapIndex])) {
+			m_currentMap = Map::CreateDefault();
+		}
+	}
+	m_modeSettings = m_currentMap.GetDefaultMode();
 }
 
 void Game::StartNewRound() {
@@ -215,16 +271,21 @@ void Game::Render() {
 
 				// Menu items
 				const char* modeNames[] = {"TIME LIMIT", "FRAG LIMIT", "LAST MAN STANDING"};
-				const char* labels[] = {
+				std::string mapName = m_mapNames.empty() ? "DEFAULT" : m_mapNames[m_mapIndex];
+				// Convert map name to uppercase
+				for (auto& ch : mapName) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+
+				std::string labels[] = {
 					"START GAME",
 					modeNames[static_cast<int>(m_modeSettings.mode)],
+					mapName,
 					"MAP EDITOR",
 					"QUIT"
 				};
-				float menuY = 300.0f;
-				float itemSpacing = 65.0f;
+				float menuY = 280.0f;
+				float itemSpacing = 55.0f;
 
-				for (int i = 0; i < 4; ++i) {
+				for (int i = 0; i < 5; ++i) {
 					Color c = (i == m_menuSelection) ? highlight : dim;
 					float y = menuY + i * itemSpacing;
 
@@ -239,8 +300,8 @@ void Game::Render() {
 						renderer->DrawLine({ax + 10, ay}, {ax, ay + 8}, highlight);
 					}
 
-					// Left/right arrows for mode selection
-					if (i == 1) {
+					// Left/right arrows for mode and map selection
+					if (i == 1 || i == 2) {
 						float textW = VectorFont::MeasureWidth(labels[i], 3.5f);
 						float lx = cx - textW * 0.5f - 30.0f;
 						float rx = cx + textW * 0.5f + 20.0f;

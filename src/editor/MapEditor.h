@@ -18,7 +18,7 @@ public:
 
 	MapEditor();
 
-	void Init(Map* map);
+	void Init(Map* map, const std::string& filePath = "");
 	void HandleEvent(const SDL_Event& event, float worldWidth, float worldHeight,
 					 int windowWidth, int windowHeight);
 	void Update(float dt);
@@ -49,6 +49,7 @@ private:
 	void RenderToolInfo(IRenderer& renderer) const;
 
 	Map* m_map = nullptr;
+	std::string m_filePath;
 	Tool m_currentTool = Tool::Select;
 	bool m_dirty = false;
 

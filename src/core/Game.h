@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <memory>
 #include <vector>
+#include <string>
 #include "render/IRenderer.h"
 #include "input/InputManager.h"
 #include "game/Arena.h"
@@ -31,6 +32,8 @@ private:
 	void Render();
 
 	void StartNewRound();
+	void ScanMaps();
+	void LoadSelectedMap();
 
 	GameState m_state = GameState::Menu;
 	bool m_running = false;
@@ -46,6 +49,11 @@ private:
 
 	// Menu selection state
 	int m_menuSelection = 0;
+
+	// Map management
+	std::vector<std::string> m_mapFiles; // full paths to .map files
+	std::vector<std::string> m_mapNames; // display names
+	int m_mapIndex = 0;
 
 	// Round over display timer
 	float m_roundOverTimer = 0.0f;
