@@ -13,7 +13,7 @@ class Obstacle;
 
 enum class GameMode {
 	TimeLimit,
-	FragLimit,
+	Deathmatch,
 	LastManStanding,
 	Hunt
 };
@@ -24,7 +24,7 @@ struct MutatorSettings {
 };
 
 struct GameModeSettings {
-	GameMode mode = GameMode::FragLimit;
+	GameMode mode = GameMode::Deathmatch;
 	int fragLimit = 10;
 	float timeLimit = 300.0f;   // seconds (5 min)
 	int respawnLives = 5;       // for LastManStanding

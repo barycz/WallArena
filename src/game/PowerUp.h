@@ -26,7 +26,6 @@ struct ActivePowerUp {
 // Power-up pickup in the arena
 class PowerUp {
 public:
-	PowerUp() = default;
 	PowerUp(Vec2 position, PowerUpType type);
 
 	void Update(float dt);
@@ -39,10 +38,10 @@ public:
 
 	void Collect();
 	void Respawn();
-	void SetRespawnTime(float t) { m_respawnDelay = t; }
 
 	// Per-type configuration
 	static float GetDuration(PowerUpType type);
+	static float GetRespawnDelay(PowerUpType type);
 	static int GetUses(PowerUpType type);
 	static Color GetColor(PowerUpType type);
 	static const char* GetName(PowerUpType type);
@@ -53,10 +52,9 @@ public:
 private:
 	void RenderIcon(IRenderer& renderer) const;
 
-	Vec2 m_position;
-	PowerUpType m_type = PowerUpType::AutoAim;
+	const Vec2 m_position;
+	const PowerUpType m_type;
 	bool m_active = true;
 	float m_respawnTimer = 0.0f;
-	float m_respawnDelay = DEFAULT_RESPAWN_DELAY;
 	float m_bobTimer = 0.0f; // for visual animation
 };

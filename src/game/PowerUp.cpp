@@ -43,7 +43,6 @@ void PowerUp::RenderIcon(IRenderer& renderer) const {
 			// Crosshair icon
 			renderer.DrawLine(m_position + Vec2(-r, 0), m_position + Vec2(r, 0), c);
 			renderer.DrawLine(m_position + Vec2(0, -r), m_position + Vec2(0, r), c);
-			renderer.DrawCircle(m_position, r * 0.5f, c, 6);
 			break;
 		}
 		case PowerUpType::HomingRockets: {
@@ -82,7 +81,7 @@ void PowerUp::RenderIcon(IRenderer& renderer) const {
 
 void PowerUp::Collect() {
 	m_active = false;
-	m_respawnTimer = m_respawnDelay;
+	m_respawnTimer = GetRespawnDelay(m_type);
 }
 
 void PowerUp::Respawn() {
@@ -94,9 +93,16 @@ float PowerUp::GetDuration(PowerUpType type) {
 	switch (type) {
 		case PowerUpType::AutoAim:       return 8.0f;
 		case PowerUpType::HomingRockets: return -1.0f; // uses-based
-		case PowerUpType::Shield:        return 15.0f;
+		case PowerUpType::Shield:        return 10.0f;
 		case PowerUpType::RapidFire:     return 8.0f;
 		default: return 5.0f;
+	}
+}
+
+float PowerUp::GetRespawnDelay(PowerUpType type) {
+	switch (type) {
+		case PowerUpType::Shield: return DEFAULT_RESPAWN_DELAY * 2.0f;
+		default: return DEFAULT_RESPAWN_DELAY;
 	}
 }
 

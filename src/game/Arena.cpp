@@ -425,7 +425,7 @@ void Arena::CheckRoundEnd() {
 			}
 			break;
 		}
-		case GameMode::FragLimit: {
+		case GameMode::Deathmatch: {
 			for (const auto& t : m_tanks) {
 				if (t.kills >= m_modeSettings.fragLimit) {
 					m_roundOver = true;
@@ -834,7 +834,7 @@ void Arena::RenderHUD(IRenderer& renderer) const {
 	}
 
 	// Frag limit indicator
-	if (m_modeSettings.mode == GameMode::FragLimit) {
+	if (m_modeSettings.mode == GameMode::Deathmatch) {
 		std::string fragStr = "FIRST TO " + std::to_string(m_modeSettings.fragLimit);
 		VectorFont::DrawTextCentered(renderer, fragStr, m_width * 0.5f, 5.0f, 1.5f, Color(60, 60, 60));
 	}

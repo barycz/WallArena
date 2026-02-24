@@ -7,7 +7,7 @@ A top-down local PvP tank arena game built in C++ with SDL2. Designed for projec
 - **Fast-paced arena combat** — Inspired by Unreal Tournament / Quake. Quick respawns, power-up control.
 - **Variable player count** — Players join/leave mid-match via keyboard or gamepad.
 - **Three game modes**:
-  - **Frag Limit** — First to N kills wins
+  - **Deathmatch** — First to N kills wins
   - **Time Limit** — Most kills when time expires wins
   - **Last Man Standing** — Limited respawns, last player alive wins
 - **Power-ups** — Auto-aim, homing rockets, shield, rapid fire

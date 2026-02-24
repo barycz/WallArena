@@ -80,7 +80,7 @@ Map Map::CreateDefault() {
 	map.AddPowerUpSpawn({{cx - puOffset, cy}, PowerUpType::RapidFire});
 
 	// Default game mode
-	map.GetDefaultMode().mode = GameMode::FragLimit;
+	map.GetDefaultMode().mode = GameMode::Deathmatch;
 	map.GetDefaultMode().fragLimit = 10;
 
 	return map;

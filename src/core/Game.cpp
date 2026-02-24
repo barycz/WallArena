@@ -271,7 +271,7 @@ void Game::Render() {
 
 				// Menu items
 				constexpr int MENU_ITEMS = 7;
-				const char* modeNames[] = {"TIME LIMIT", "FRAG LIMIT", "LAST MAN STANDING", "HUNT"};
+				const char* modeNames[] = {"TIME LIMIT", "DEATHMATCH", "LAST MAN STANDING", "HUNT"};
 				std::string mapName = m_mapNames.empty() ? "DEFAULT" : m_mapNames[m_mapIndex];
 				for (auto& ch : mapName) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
 
@@ -306,9 +306,12 @@ void Game::Render() {
 					if (i == m_menuSelection) {
 						float textW = VectorFont::MeasureWidth(labels[i], sc);
 						float ax = cx - textW * 0.5f - 20.0f;
+						float bx = cx + textW * 0.5f + 20.0f;
 						float ay = y + sc * 3.5f;
 						renderer->DrawLine({ax, ay - 8}, {ax + 10, ay}, highlight);
 						renderer->DrawLine({ax + 10, ay}, {ax, ay + 8}, highlight);
+						renderer->DrawLine({bx, ay - 8}, {bx - 10, ay}, highlight);
+						renderer->DrawLine({bx - 10, ay}, {bx, ay + 8}, highlight);
 					}
 
 					// Left/right arrows for cyclable/toggleable rows
