@@ -39,8 +39,6 @@ struct SpawnPoint {
 
 class Arena {
 public:
-	Arena();
-
 	void Init(float width, float height, int playerCount);
 	void InitFromMap(const Map& map, int playerCount);
 	void SetGameMode(const GameModeSettings& settings);

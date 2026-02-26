@@ -7,10 +7,6 @@
 #include <cstdlib>
 #include <string>
 
-static constexpr float PI = 3.14159265f;
-
-Arena::Arena() = default;
-
 void Arena::Init(float width, float height, int playerCount) {
 	m_width = width;
 	m_height = height;
@@ -31,10 +27,10 @@ void Arena::Init(float width, float height, int playerCount) {
 	float rx = (width - margin * 2.0f) * 0.4f;
 	float ry = (height - margin * 2.0f) * 0.4f;
 	for (int i = 0; i < 8; ++i) {
-		float angle = (2.0f * PI * i) / 8.0f;
+		float angle = (2.0f * M_PI * i) / 8.0f;
 		SpawnPoint sp;
 		sp.position = {cx + std::cos(angle) * rx, cy + std::sin(angle) * ry};
-		sp.angle = angle + PI; // face center
+		sp.angle = angle + M_PI; // face center
 		m_spawnPoints.push_back(sp);
 	}
 
@@ -79,10 +75,10 @@ void Arena::InitFromMap(const Map& map, int playerCount) {
 		float rx = (m_width - 160.0f) * 0.4f;
 		float ry = (m_height - 160.0f) * 0.4f;
 		for (int i = 0; i < 8; ++i) {
-			float angle = (2.0f * PI * i) / 8.0f;
+			float angle = (2.0f * M_PI * i) / 8.0f;
 			SpawnPoint sp;
 			sp.position = {cx + std::cos(angle) * rx, cy + std::sin(angle) * ry};
-			sp.angle = angle + PI;
+			sp.angle = angle + M_PI;
 			m_spawnPoints.push_back(sp);
 		}
 	}
@@ -671,7 +667,7 @@ void Arena::RenderDeathEffect(IRenderer& renderer, Vec2 pos, Color color, float 
 	c.a = static_cast<uint8_t>(255 * (1.0f - progress));
 
 	for (int i = 0; i < numLines; ++i) {
-		float angle = (2.0f * PI * i) / numLines + progress * 0.5f;
+		float angle = (2.0f * M_PI * i) / numLines + progress * 0.5f;
 		Vec2 inner = pos + Vec2::FromAngle(angle) * (radius * 0.3f);
 		Vec2 outer = pos + Vec2::FromAngle(angle) * radius;
 		renderer.DrawLine(inner, outer, c);
@@ -734,8 +730,8 @@ void Arena::UpdateAutoAim(float dt) {
 
 		// Shortest angular difference
 		float diff = desiredAngle - currentAngle;
-		while (diff > PI) diff -= 2.0f * PI;
-		while (diff < -PI) diff += 2.0f * PI;
+		while (diff > M_PI) diff -= 2.0f * M_PI;
+		while (diff < -M_PI) diff += 2.0f * M_PI;
 
 		float maxTurn = Tank::TURN_SPEED * 3.0f * dt;
 		if (std::abs(diff) < maxTurn) {
