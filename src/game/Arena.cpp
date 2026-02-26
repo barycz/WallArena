@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <limits>
 #include <string>
 
 void Arena::Init(float width, float height, int playerCount) {
@@ -151,8 +152,25 @@ SpawnPoint Arena::GetSpawnPoint() const {
 	if (m_spawnPoints.empty()) {
 		return {{m_width * 0.5f, m_height * 0.5f}, 0.0f};
 	}
-	int r = std::rand() % static_cast<int>(m_spawnPoints.size());
-	return m_spawnPoints[r];
+	int n = static_cast<int>(m_spawnPoints.size());
+	int candidates = std::min(n, 2);
+	int bestIdx = std::rand() % n;
+	float bestMinDist = -1.0f;
+
+	for (int c = 0; c < candidates; ++c) {
+		int idx = std::rand() % n;
+		float minDist = std::numeric_limits<float>::max();
+		for (const auto& tank : m_tanks) {
+			if (!tank.IsAlive()) continue;
+			float d = Vec2::Distance(m_spawnPoints[idx].position, tank.GetPosition());
+			if (d < minDist) minDist = d;
+		}
+		if (minDist > bestMinDist) {
+			bestMinDist = minDist;
+			bestIdx = idx;
+		}
+	}
+	return m_spawnPoints[bestIdx];
 }
 
 void Arena::Update(float dt, const InputManager& input) {
