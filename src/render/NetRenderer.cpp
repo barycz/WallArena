@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -24,6 +25,14 @@
 namespace {
 constexpr float CHAIN_EPS = 0.75f; // world units: join DrawLine calls closer than this
 constexpr float PI = 3.14159265358979f; // M_PI is not standard C++ (absent on MSVC)
+
+// Bounds on how much the render thread may ever pay for the network.  Sends are
+// non-blocking; a client that has not drained a frame within SEND_BUDGET_MS is
+// declared too slow and dropped, so the worst-case stall is bounded by
+// MAX_CLIENTS * SEND_BUDGET_MS rather than by however long a peer feels like
+// stalling.
+constexpr int MAX_CLIENTS = 4;
+constexpr int SEND_BUDGET_MS = 20;
 
 // Parse an env var as a number, complaining instead of silently using the default.
 bool EnvNumber(const char* name, double& out) {
@@ -50,6 +59,9 @@ NetRenderer::NetRenderer() {
 			std::fprintf(stderr, "NetRenderer: WALLARENA_NET_PORT out of range, using %u\n",
 						 static_cast<unsigned>(m_port));
 		}
+	}
+	if (const char* env = std::getenv("WALLARENA_NET_ANY")) {
+		m_bindAny = (env[0] != '\0' && env[0] != '0');
 	}
 	if (EnvNumber("WALLARENA_NET_FPS", v)) {
 		if (v > 0.0) {
@@ -91,7 +103,9 @@ bool NetRenderer::Init(int, int) {
 
 	sockaddr_in addr{};
 	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	// Loopback by default: this is a bridge to a local hardware driver, not a
+	// service.  WALLARENA_NET_ANY=1 opens it to the rest of the network.
+	addr.sin_addr.s_addr = htonl(m_bindAny ? INADDR_ANY : INADDR_LOOPBACK);
 	addr.sin_port = htons(m_port);
 
 	if (::bind(m_listenFd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
@@ -108,8 +122,8 @@ bool NetRenderer::Init(int, int) {
 	}
 	::fcntl(m_listenFd, F_SETFL, O_NONBLOCK);
 
-	std::printf("NetRenderer: broadcasting frames on TCP port %u\n",
-				static_cast<unsigned>(m_port));
+	std::printf("NetRenderer: broadcasting frames on %s:%u\n",
+				m_bindAny ? "0.0.0.0" : "127.0.0.1", static_cast<unsigned>(m_port));
 	return true;
 }
 
@@ -123,19 +137,29 @@ void NetRenderer::Shutdown() {
 }
 
 void NetRenderer::PollAccept() {
-	for (;;) {
+	while (true) {
 		int fd = ::accept(m_listenFd, nullptr, nullptr);
-		if (fd < 0) break; // EWOULDBLOCK / EAGAIN: no more pending clients
+		if (fd < 0) {
+			if (errno == EINTR || errno == ECONNABORTED) continue; // retry
+			break; // EAGAIN / EWOULDBLOCK: no more pending clients
+		}
+
+		if (static_cast<int>(m_clients.size()) >= MAX_CLIENTS) {
+			// Refuse rather than let an unbounded set of peers each claim a
+			// slice of the frame budget.
+			std::printf("NetRenderer: refusing client (limit %d reached)\n", MAX_CLIENTS);
+			::close(fd);
+			continue;
+		}
 
 		int one = 1;
 		::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 #ifdef SO_NOSIGPIPE
 		::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
 #endif
-		// A client that can't absorb a frame within 100 ms is too slow -> drop it.
-		timeval tv{};
-		tv.tv_usec = 100000;
-		::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+		// Non-blocking: SendAll polls with its own deadline, so a wedged peer
+		// can never park the render thread inside send().
+		::fcntl(fd, F_SETFL, O_NONBLOCK);
 
 		m_clients.push_back(fd);
 		std::printf("NetRenderer: client connected (%d total)\n",
@@ -143,12 +167,35 @@ void NetRenderer::PollAccept() {
 	}
 }
 
+// Writes the whole message or gives up.  A partial write cannot be abandoned
+// without corrupting the client's stream, so "gave up" always means "drop".
 static bool SendAll(int fd, const char* p, size_t n) {
+	const auto deadline =
+		std::chrono::steady_clock::now() + std::chrono::milliseconds(SEND_BUDGET_MS);
+
 	while (n > 0) {
 		ssize_t k = ::send(fd, p, n, MSG_NOSIGNAL);
-		if (k <= 0) return false; // error or send timeout
-		p += k;
-		n -= static_cast<size_t>(k);
+		if (k > 0) {
+			p += k;
+			n -= static_cast<size_t>(k);
+			continue;
+		}
+		if (k == 0) return false;
+		if (errno == EINTR) continue;
+		if (errno != EAGAIN && errno != EWOULDBLOCK) return false;
+
+		auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+							 deadline - std::chrono::steady_clock::now())
+							 .count();
+		if (remaining <= 0) return false; // too slow
+
+		pollfd pfd{};
+		pfd.fd = fd;
+		pfd.events = POLLOUT;
+		int r = ::poll(&pfd, 1, static_cast<int>(remaining));
+		if (r < 0 && errno == EINTR) continue;
+		if (r <= 0) return false; // timed out or error
+		if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) return false;
 	}
 	return true;
 }
@@ -183,7 +230,7 @@ void NetRenderer::End() {
 
 	std::string msg;
 	msg.reserve(4096);
-	char buf[96];
+	char buf[128];
 
 	std::snprintf(buf, sizeof(buf), "F %.1f %.1f %zu", m_worldWidth, m_worldHeight,
 				  m_paths.size());
@@ -203,7 +250,15 @@ void NetRenderer::End() {
 	Broadcast(msg);
 }
 
+// A NaN/inf coordinate would serialise as "nan"/"inf" and desync every client
+// parsing the frame, so such points never enter a path.
+static bool IsFinite(Vec2 v) {
+	return std::isfinite(v.x) && std::isfinite(v.y);
+}
+
 void NetRenderer::DrawLine(Vec2 a, Vec2 b, Color c) {
+	if (!IsFinite(a) || !IsFinite(b)) return;
+
 	if (!m_paths.empty()) {
 		Path& last = m_paths.back();
 		if (last.fromLine && last.c.r == c.r && last.c.g == c.g && last.c.b == c.b &&
@@ -221,10 +276,15 @@ void NetRenderer::DrawLine(Vec2 a, Vec2 b, Color c) {
 
 void NetRenderer::DrawPolyline(const std::vector<Vec2>& pts, Color c, bool closed) {
 	if (pts.size() < 2) return;
+
 	Path path;
 	path.c = c;
-	path.pts = pts;
-	if (closed && pts.size() > 2) path.pts.push_back(pts.front());
+	path.pts.reserve(pts.size() + 1);
+	for (const Vec2& v : pts) {
+		if (IsFinite(v)) path.pts.push_back(v);
+	}
+	if (path.pts.size() < 2) return;
+	if (closed && path.pts.size() > 2) path.pts.push_back(path.pts.front());
 	m_paths.push_back(std::move(path));
 }
 

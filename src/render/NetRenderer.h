@@ -23,6 +23,10 @@
 // Coordinates are world units (same space as IRenderer draw calls, Y down).
 // Each path is a pen-down polyline; the client blanks the beam between paths.
 //
+// The listen socket is bound to loopback unless WALLARENA_NET_ANY is set, and
+// the number of simultaneous clients is capped, so the worst case a peer can
+// impose on the render thread is bounded.
+//
 // POSIX sockets only.  On Windows this compiles to a no-op renderer.
 class NetRenderer : public IRenderer {
 public:
@@ -60,6 +64,7 @@ private:
 	float m_worldHeight = 1000.0f;
 
 	uint16_t m_port = 9600;
+	bool m_bindAny = false; // false: listen on loopback only
 	int m_listenFd = -1;
 	std::vector<int> m_clients;
 
