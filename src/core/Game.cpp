@@ -33,6 +33,18 @@ bool Game::Init() {
 	// Uncomment to enable dual output:
 	// m_renderers.push_back(m_ildaRenderer.get());
 
+	// Network renderer: broadcast vector frames over TCP for external hardware
+	// backends (oscilloscope XY driver, laser DAC, ...).  Listens on port 9600;
+	// override with the WALLARENA_NET_PORT environment variable, or set it to 0
+	// to disable.  Harmless while nothing is connected.
+	m_netRenderer = std::make_unique<NetRenderer>();
+	if (m_netRenderer->GetPort() != 0 && m_netRenderer->Init(1280, 720)) {
+		m_netRenderer->SetWorldBounds(WORLD_WIDTH, WORLD_HEIGHT);
+		m_renderers.push_back(m_netRenderer.get());
+	} else {
+		m_netRenderer.reset();
+	}
+
 	m_input.Init();
 	m_running = true;
 	m_state = GameState::Menu;
@@ -45,6 +57,7 @@ bool Game::Init() {
 
 void Game::Shutdown() {
 	m_renderers.clear();
+	m_netRenderer.reset();
 	m_ildaRenderer.reset();
 	m_sdlRenderer.reset();
 	SDL_Quit();

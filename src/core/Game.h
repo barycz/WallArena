@@ -8,6 +8,7 @@
 #include "map/Map.h"
 #include "editor/MapEditor.h"
 #include "render/ILDARenderer.h"
+#include "render/NetRenderer.h"
 
 enum class GameState {
 	Menu,
@@ -41,6 +42,7 @@ private:
 	std::vector<IRenderer*> m_renderers;
 	std::unique_ptr<class SDLRenderer> m_sdlRenderer;
 	std::unique_ptr<ILDARenderer> m_ildaRenderer;
+	std::unique_ptr<NetRenderer> m_netRenderer;
 	InputManager m_input;
 	Arena m_arena;
 	GameModeSettings m_modeSettings;
