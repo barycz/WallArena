@@ -13,20 +13,50 @@
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+// Linux spells "do not raise SIGPIPE on a dead peer" as a send() flag; the BSDs
+// (macOS included) spell it as a per-socket option set at accept() time.
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
 #endif
 
 namespace {
 constexpr float CHAIN_EPS = 0.75f; // world units: join DrawLine calls closer than this
+constexpr float PI = 3.14159265358979f; // M_PI is not standard C++ (absent on MSVC)
+
+// Parse an env var as a number, complaining instead of silently using the default.
+bool EnvNumber(const char* name, double& out) {
+	const char* env = std::getenv(name);
+	if (!env) return false;
+	char* end = nullptr;
+	double v = std::strtod(env, &end);
+	if (end == env || *end != '\0') {
+		std::fprintf(stderr, "NetRenderer: ignoring invalid %s=\"%s\"\n", name, env);
+		return false;
+	}
+	out = v;
+	return true;
 }
+} // namespace
 
 NetRenderer::NetRenderer() {
-	if (const char* env = std::getenv("WALLARENA_NET_PORT")) {
-		int p = std::atoi(env);
-		if (p > 0 && p < 65536) m_port = static_cast<uint16_t>(p);
+	double v = 0.0;
+	if (EnvNumber("WALLARENA_NET_PORT", v)) {
+		// 0 is a valid value: it means "do not open the socket at all".
+		if (v >= 0.0 && v < 65536.0) {
+			m_port = static_cast<uint16_t>(v);
+		} else {
+			std::fprintf(stderr, "NetRenderer: WALLARENA_NET_PORT out of range, using %u\n",
+						 static_cast<unsigned>(m_port));
+		}
 	}
-	if (const char* env = std::getenv("WALLARENA_NET_FPS")) {
-		double fps = std::atof(env);
-		if (fps > 0.0) m_minFramePeriod = std::chrono::duration<double>(1.0 / fps);
+	if (EnvNumber("WALLARENA_NET_FPS", v)) {
+		if (v > 0.0) {
+			m_minFramePeriod = std::chrono::duration<double>(1.0 / v);
+		} else {
+			std::fprintf(stderr, "NetRenderer: WALLARENA_NET_FPS must be > 0, ignoring\n");
+		}
 	}
 }
 
@@ -45,6 +75,11 @@ void NetRenderer::Broadcast(const std::string&) {}
 #else // -----------------------------------------------------------------------
 
 bool NetRenderer::Init(int, int) {
+	if (m_port == 0) {
+		std::printf("NetRenderer: disabled (port 0)\n");
+		return false;
+	}
+
 	m_listenFd = ::socket(AF_INET, SOCK_STREAM, 0);
 	if (m_listenFd < 0) {
 		std::perror("NetRenderer: socket");
@@ -94,6 +129,9 @@ void NetRenderer::PollAccept() {
 
 		int one = 1;
 		::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+#ifdef SO_NOSIGPIPE
+		::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+#endif
 		// A client that can't absorb a frame within 100 ms is too slow -> drop it.
 		timeval tv{};
 		tv.tv_usec = 100000;
@@ -195,7 +233,7 @@ void NetRenderer::DrawCircle(Vec2 center, float radius, Color c, int segments) {
 	std::vector<Vec2> pts;
 	pts.reserve(static_cast<size_t>(segments) + 1);
 	for (int i = 0; i <= segments; ++i) {
-		float angle = (2.0f * static_cast<float>(M_PI) * i) / segments;
+		float angle = (2.0f * PI * i) / segments;
 		pts.push_back(center + Vec2::FromAngle(angle) * radius);
 	}
 	DrawPolyline(pts, c, false);
