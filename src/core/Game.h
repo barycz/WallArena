@@ -64,4 +64,8 @@ private:
 	// World constants
 	static constexpr float WORLD_WIDTH = 1000.0f;
 	static constexpr float WORLD_HEIGHT = 1000.0f;
+
+	// Window constants
+	static constexpr int WINDOW_WIDTH = 1280;
+	static constexpr int WINDOW_HEIGHT = 720;
 };

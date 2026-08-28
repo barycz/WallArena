@@ -216,17 +216,23 @@ void NetRenderer::Broadcast(const std::string& msg) {
 
 void NetRenderer::Begin() {
 	m_paths.clear();
-}
+	m_active = false;
 
-void NetRenderer::End() {
 	if (m_listenFd < 0) return;
-
 	PollAccept();
 	if (m_clients.empty()) return;
 
+	// Decide up front whether this frame will actually go out: with nobody
+	// listening (the default) or inside the rate-limit window, the draw calls
+	// below can skip building geometry nothing will ever read.
 	auto now = std::chrono::steady_clock::now();
 	if (now - m_lastSend < m_minFramePeriod) return;
 	m_lastSend = now;
+	m_active = true;
+}
+
+void NetRenderer::End() {
+	if (!m_active) return;
 
 	std::string msg;
 	msg.reserve(4096);
@@ -256,8 +262,16 @@ static bool IsFinite(Vec2 v) {
 	return std::isfinite(v.x) && std::isfinite(v.y);
 }
 
+NetRenderer::Path& NetRenderer::NewPath(Color c, bool fromLine) {
+	m_paths.emplace_back();
+	Path& path = m_paths.back();
+	path.c = c;
+	path.fromLine = fromLine;
+	return path;
+}
+
 void NetRenderer::DrawLine(Vec2 a, Vec2 b, Color c) {
-	if (!IsFinite(a) || !IsFinite(b)) return;
+	if (!m_active || !IsFinite(a) || !IsFinite(b)) return;
 
 	if (!m_paths.empty()) {
 		Path& last = m_paths.back();
@@ -267,46 +281,45 @@ void NetRenderer::DrawLine(Vec2 a, Vec2 b, Color c) {
 			return;
 		}
 	}
-	Path path;
-	path.c = c;
-	path.fromLine = true;
-	path.pts = {a, b};
-	m_paths.push_back(std::move(path));
+	NewPath(c, true).pts = {a, b};
 }
 
 void NetRenderer::DrawPolyline(const std::vector<Vec2>& pts, Color c, bool closed) {
-	if (pts.size() < 2) return;
+	if (!m_active || pts.size() < 2) return;
 
-	Path path;
-	path.c = c;
+	Path& path = NewPath(c, false);
 	path.pts.reserve(pts.size() + 1);
 	for (const Vec2& v : pts) {
 		if (IsFinite(v)) path.pts.push_back(v);
 	}
-	if (path.pts.size() < 2) return;
+	if (path.pts.size() < 2) {
+		m_paths.pop_back();
+		return;
+	}
 	if (closed && path.pts.size() > 2) path.pts.push_back(path.pts.front());
-	m_paths.push_back(std::move(path));
 }
 
 void NetRenderer::DrawCircle(Vec2 center, float radius, Color c, int segments) {
+	if (!m_active || !IsFinite(center) || !std::isfinite(radius)) return;
 	if (segments < 3) segments = 3;
-	std::vector<Vec2> pts;
-	pts.reserve(static_cast<size_t>(segments) + 1);
+
+	// Built straight into the path: going via DrawPolyline would allocate a
+	// temporary vector and copy it, once per circle per frame.
+	Path& path = NewPath(c, false);
+	path.pts.reserve(static_cast<size_t>(segments) + 1);
 	for (int i = 0; i <= segments; ++i) {
 		float angle = (2.0f * PI * i) / segments;
-		pts.push_back(center + Vec2::FromAngle(angle) * radius);
+		path.pts.push_back(center + Vec2::FromAngle(angle) * radius);
 	}
-	DrawPolyline(pts, c, false);
 }
 
 void NetRenderer::DrawRect(Vec2 topLeft, Vec2 size, Color c) {
-	std::vector<Vec2> pts = {
-		topLeft,
-		{topLeft.x + size.x, topLeft.y},
-		{topLeft.x + size.x, topLeft.y + size.y},
-		{topLeft.x, topLeft.y + size.y},
-	};
-	DrawPolyline(pts, c, true);
+	if (!m_active) return;
+	DrawPolyline({topLeft,
+				  {topLeft.x + size.x, topLeft.y},
+				  {topLeft.x + size.x, topLeft.y + size.y},
+				  {topLeft.x, topLeft.y + size.y}},
+				 c, true);
 }
 
 void NetRenderer::SetWorldBounds(float width, float height) {

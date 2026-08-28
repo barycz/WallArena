@@ -12,8 +12,9 @@
 // It is a normal IRenderer: add it to Game::m_renderers next to the SDL one.
 // A TCP listen socket is opened on Init(); clients may connect/disconnect at any
 // time.  Frames are only serialised and sent while at least one client is
-// connected.  Non-blocking accept + bounded-timeout send: a client that cannot
-// keep up is dropped rather than stalling the game loop.
+// connected -- with no client attached the draw calls are skipped outright.
+// Non-blocking accept + bounded-timeout send: a client that cannot keep up is
+// dropped rather than stalling the game loop.
 //
 // Wire format - one text line per frame, '\n' terminated, fields space
 // separated, paths separated by " ; ":
@@ -57,6 +58,7 @@ private:
 		bool fromLine = false; // eligible for DrawLine chaining
 	};
 
+	Path& NewPath(Color c, bool fromLine);
 	void PollAccept();
 	void Broadcast(const std::string& msg);
 
@@ -69,6 +71,7 @@ private:
 	std::vector<int> m_clients;
 
 	std::vector<Path> m_paths;
+	bool m_active = false; // this frame has a listener and is inside the rate cap
 
 	// Cap broadcast rate (the game may render far faster than vsync).
 	std::chrono::duration<double> m_minFramePeriod{1.0 / 60.0};

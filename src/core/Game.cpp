@@ -18,7 +18,7 @@ bool Game::Init() {
 	}
 
 	m_sdlRenderer = std::make_unique<SDLRenderer>();
-	if (!m_sdlRenderer->Init(1280, 720)) {
+	if (!m_sdlRenderer->Init(WINDOW_WIDTH, WINDOW_HEIGHT)) {
 		SDL_Log("SDLRenderer::Init failed");
 		return false;
 	}
@@ -27,18 +27,18 @@ bool Game::Init() {
 
 	// ILDA renderer (always created, writes file on shutdown)
 	m_ildaRenderer = std::make_unique<ILDARenderer>();
-	m_ildaRenderer->Init(1280, 720);
+	m_ildaRenderer->Init(WINDOW_WIDTH, WINDOW_HEIGHT);
 	m_ildaRenderer->SetWorldBounds(WORLD_WIDTH, WORLD_HEIGHT);
 	m_ildaRenderer->SetOutputPath("output.ild");
 	// Uncomment to enable dual output:
 	// m_renderers.push_back(m_ildaRenderer.get());
 
 	// Network renderer: broadcast vector frames over TCP for external hardware
-	// backends (oscilloscope XY driver, laser DAC, ...).  Listens on port 9600;
-	// override with the WALLARENA_NET_PORT environment variable, or set it to 0
-	// to disable.  Harmless while nothing is connected.
+	// backends (oscilloscope XY driver, laser DAC, ...).  Listens on
+	// 127.0.0.1:9600; see WALLARENA_NET_PORT / _ANY / _FPS.  Set the port to 0
+	// to disable.  Skips its draw calls entirely while nothing is connected.
 	m_netRenderer = std::make_unique<NetRenderer>();
-	if (m_netRenderer->GetPort() != 0 && m_netRenderer->Init(1280, 720)) {
+	if (m_netRenderer->GetPort() != 0 && m_netRenderer->Init(WINDOW_WIDTH, WINDOW_HEIGHT)) {
 		m_netRenderer->SetWorldBounds(WORLD_WIDTH, WORLD_HEIGHT);
 		m_renderers.push_back(m_netRenderer.get());
 	} else {
