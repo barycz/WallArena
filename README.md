@@ -68,6 +68,34 @@ m_renderers.push_back(m_ildaRenderer.get());
 
 The output file is written to `output.ild` on shutdown.
 
+## Network Output (live hardware backends)
+
+`NetRenderer` is enabled by default. It opens a TCP server on `127.0.0.1:9600`
+and broadcasts every rendered frame as vector geometry to all connected clients.
+This lets an external process drive real hardware — an oscilloscope in X-Y mode,
+a laser galvo DAC, a custom visualiser — without linking against the game.
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `WALLARENA_NET_PORT` | `9600` | Listen port; `0` disables the renderer entirely |
+| `WALLARENA_NET_ANY` | `0` | `1` binds all interfaces instead of loopback |
+| `WALLARENA_NET_FPS` | `60` | Broadcast rate cap |
+
+Frames are only serialised while a client is connected. Sends are non-blocking
+with a 20 ms per-client budget and at most 4 simultaneous clients, so a peer that
+can't keep up is dropped instead of stalling the game loop. POSIX sockets only;
+on Windows the renderer compiles to a no-op.
+
+**Wire format** — one `\n`-terminated text line per frame, space-separated
+fields, paths separated by ` ; `:
+
+```
+F <worldW> <worldH> <numPaths> ; <r> <g> <b> <n> <x0> <y0> ... ; ...
+```
+
+Coordinates are world units (same space as the `IRenderer` draw calls, Y down).
+Each path is a pen-down polyline; the client blanks the beam between paths.
+
 ## Project Structure
 
 ```
@@ -89,6 +117,7 @@ src/
 │   ├── IRenderer.h        — Renderer interface
 │   ├── SDLRenderer.h/.cpp — SDL2 window backend
 │   ├── ILDARenderer.h/.cpp — ILDA file output backend
+│   ├── NetRenderer.h/.cpp — TCP frame broadcast backend
 │   └── Color.h            — RGBA color
 ├── map/
 │   ├── Map.h/.cpp         — Map data structure
